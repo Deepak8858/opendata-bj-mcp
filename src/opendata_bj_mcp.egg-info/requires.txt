@@ -1,0 +1,9 @@
+fastmcp
+httpx
+pydantic>=2.0
+python-dotenv
+
+[test]
+pytest
+pytest-asyncio
+respx

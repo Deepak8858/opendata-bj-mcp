@@ -1,7 +1,7 @@
 import pytest
 import respx
 from httpx import Response
-from src.opendata_bj.client.portal import BeninPortalClient
+from opendata_bj.client.portal import BeninPortalClient
 
 @pytest.mark.asyncio
 async def test_get_all_datasets_success():

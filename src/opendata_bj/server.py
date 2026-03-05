@@ -64,5 +64,40 @@ async def consulter_dataset(dataset_id: str) -> str:
         
     return "\n".join(output)
 
+@mcp.tool()
+async def lister_organisations() -> str:
+    """
+    Donne la liste des institutions qui publient des données sur le portail.
+    """
+    client = await get_client()
+    orgs = await client.get_organizations()
+    
+    if not orgs:
+        return "Aucune organisation trouvée."
+    
+    return "Organisations disponibles :\n" + "\n".join([f"- {org}" for org in orgs])
+
+@mcp.tool()
+async def publier_datasets_bulk(metadata_json: str) -> str:
+    """
+    Permet d'uploader des jeux de données en masse (bulk upload).
+    
+    Args:
+        metadata_json: Un objet JSON contenant les métadonnées des datasets à uploader.
+    """
+    import json
+    try:
+        data = json.loads(metadata_json)
+    except json.JSONDecodeError:
+        return "Erreur : Le format JSON est invalide."
+        
+    client = await get_client()
+    result = await client.bulk_upload(data, [])
+    
+    if result.get("success"):
+        return f"Succès ! {result.get('uploaded_count', 0)} datasets ont été uploadés."
+    else:
+        return f"Erreur lors de l'upload : {result.get('errors')}"
+
 if __name__ == "__main__":
     mcp.run()

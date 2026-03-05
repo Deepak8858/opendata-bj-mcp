@@ -37,5 +37,13 @@ class BeninPortalClient:
         response.raise_for_status()
         return response.json()
 
+    async def get_organizations(self) -> List[str]:
+        """Récupère la liste des organisations."""
+        url = f"{self.base_url}/api/open/organisations/all"
+        response = await self.client.get(url)
+        response.raise_for_status()
+        # Supposons que le format est {"organisations": ["instad", "cdij", ...]}
+        return response.json().get("organisations", [])
+
     async def close(self):
         await self.client.aclose()
