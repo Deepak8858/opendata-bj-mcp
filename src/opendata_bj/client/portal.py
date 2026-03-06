@@ -52,14 +52,27 @@ class BeninPortalClient:
         return response.json()
 
     async def get_organizations(self) -> List[str]:
-        """Récupère la liste des organisations en scannant les datasets."""
-        # Comme il n'y a pas d'endpoint explicite dans la doc, on extrait depuis les datasets
-        datasets = await self.get_all_datasets(limit=100)
-        orgs = set()
-        for ds in datasets:
-            if ds.organization:
-                orgs.add(ds.organization)
-        return sorted(list(orgs))
+        """Récupère la liste complète des organisations."""
+        url = f"{self.base_url}/api/v1/organizations"
+        response = await self.client.get(url)
+        
+        if response.status_code == 404:
+            # Fallback en scannant les datasets
+            datasets = await self.get_all_datasets(limit=100)
+            orgs = set()
+            for ds in datasets:
+                if ds.organization:
+                    orgs.add(ds.organization)
+            return sorted(list(orgs))
+            
+        response.raise_for_status()
+        data = response.json()
+        orgs = []
+        for org in data.get("data", []):
+            name = org.get("name") or org.get("title")
+            if name:
+                orgs.append(name)
+        return orgs
 
     async def close(self):
         await self.client.aclose()
