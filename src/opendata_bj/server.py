@@ -4,10 +4,10 @@ from fastmcp import FastMCP
 from .client.portal import BeninPortalClient
 from .tools import datasets, admin
 
-# Initialisation du serveur FastMCP
+# Initialize FastMCP server
 mcp = FastMCP("opendata-bj")
 
-# Client asynchrone singleton
+# Singleton asynchronous client
 _client: Optional[BeninPortalClient] = None
 
 async def get_client() -> BeninPortalClient:
@@ -18,28 +18,28 @@ async def get_client() -> BeninPortalClient:
     return _client
 
 @mcp.tool()
-async def rechercher_datasets(query: Optional[str] = None, limit: int = 10) -> str:
-    """Recherche des jeux de données publiques du Bénin."""
+async def search_datasets(query: Optional[str] = None, limit: int = 10) -> str:
+    """Search for public datasets from Benin."""
     client = await get_client()
-    return await datasets.rechercher_datasets(client, query, limit)
+    return await datasets.search_datasets(client, query, limit)
 
 @mcp.tool()
-async def consulter_dataset(dataset_id: str) -> str:
-    """Récupère les détails d'un dataset spécifique."""
+async def get_dataset(dataset_id: str) -> str:
+    """Retrieve details for a specific dataset."""
     client = await get_client()
-    return await datasets.consulter_dataset(client, dataset_id)
+    return await datasets.get_dataset(client, dataset_id)
 
 @mcp.tool()
-async def lister_organisations() -> str:
-    """Donne la liste des institutions qui publient des données."""
+async def list_organizations() -> str:
+    """List institutions that publish data."""
     client = await get_client()
-    return await datasets.lister_organisations(client)
+    return await datasets.list_organizations(client)
 
 @mcp.tool()
-async def publier_datasets_bulk(metadata_json: str) -> str:
-    """Upload de jeux de données en masse."""
+async def publish_datasets_bulk(metadata_json: str) -> str:
+    """Bulk upload datasets."""
     client = await get_client()
-    return await admin.publier_datasets_bulk(client, metadata_json)
+    return await admin.publish_datasets_bulk(client, metadata_json)
 
 if __name__ == "__main__":
     mcp.run()

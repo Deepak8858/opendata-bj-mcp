@@ -2,29 +2,29 @@ from typing import Optional, List
 from ..client.portal import BeninPortalClient
 from ..models.dataset import Dataset
 
-async def rechercher_datasets(client: BeninPortalClient, query: Optional[str] = None, limit: int = 10) -> str:
-    """Recherche des jeux de données publiques du Bénin."""
+async def search_datasets(client: BeninPortalClient, query: Optional[str] = None, limit: int = 10) -> str:
+    """Search for public datasets from Benin."""
     datasets = await client.get_all_datasets(query=query, limit=limit)
     
     if not datasets:
-        return "Aucun jeu de données trouvé pour cette recherche."
+        return "No datasets found for this search."
     
-    res = [f"- [{ds.id}] {ds.title} (Organisation: {ds.organization})" for ds in datasets]
+    res = [f"- [{ds.id}] {ds.title} (Organization: {ds.organization})" for ds in datasets]
     return "\n".join(res)
 
-async def consulter_dataset(client: BeninPortalClient, dataset_id: str) -> str:
-    """Récupère les détails et les ressources d'un dataset spécifique."""
+async def get_dataset(client: BeninPortalClient, dataset_id: str) -> str:
+    """Retrieve details and resources for a specific dataset."""
     ds = await client.get_dataset_details(dataset_id)
     
     if not ds:
-        return f"Jeu de données '{dataset_id}' introuvable."
+        return f"Dataset '{dataset_id}' not found."
     
     output = [
         f"# {ds.title}",
         f"**Description**: {ds.description}",
-        f"**Organisation**: {ds.organization}",
+        f"**Organization**: {ds.organization}",
         f"**Tags**: {', '.join(ds.tags)}",
-        "\n## Ressources disponibles:"
+        "\n## Available Resources:"
     ]
     
     for res in ds.resources:
@@ -32,9 +32,9 @@ async def consulter_dataset(client: BeninPortalClient, dataset_id: str) -> str:
         
     return "\n".join(output)
 
-async def lister_organisations(client: BeninPortalClient) -> str:
-    """Donne la liste des institutions qui publient des données."""
+async def list_organizations(client: BeninPortalClient) -> str:
+    """List institutions that publish data on the portal."""
     orgs = await client.get_organizations()
     if not orgs:
-        return "Aucune organisation trouvée."
-    return "Organisations disponibles :\n" + "\n".join([f"- {org}" for org in orgs])
+        return "No organizations found."
+    return "Available Organizations:\n" + "\n".join([f"- {org}" for org in orgs])
