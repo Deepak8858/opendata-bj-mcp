@@ -1,5 +1,5 @@
 import json
-from ..client.portal import BeninPortalClient
+from opendata_bj.client.portal import BeninPortalClient
 
 async def publish_datasets_bulk(client: BeninPortalClient, metadata_json: str) -> str:
     """Upload datasets in bulk."""

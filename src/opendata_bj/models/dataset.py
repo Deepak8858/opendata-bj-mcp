@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional, Any
-from .resource import Resource
+from opendata_bj.models.resource import Resource
 
 class Dataset(BaseModel):
     id: str

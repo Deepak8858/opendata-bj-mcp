@@ -1,8 +1,8 @@
 import os
 from typing import Optional
 from fastmcp import FastMCP
-from .client.portal import BeninPortalClient
-from .tools import datasets, admin
+from opendata_bj.client.portal import BeninPortalClient
+from opendata_bj.tools import datasets, admin
 
 # Initialize FastMCP server
 mcp = FastMCP("opendata-bj")

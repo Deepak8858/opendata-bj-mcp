@@ -1,6 +1,6 @@
 import httpx
 from typing import List, Optional, Dict, Any
-from ..models.dataset import Dataset
+from opendata_bj.models.dataset import Dataset
 
 class BeninPortalClient:
     def __init__(self, base_url: str = "https://donneespubliques.gouv.bj", api_key: Optional[str] = None):

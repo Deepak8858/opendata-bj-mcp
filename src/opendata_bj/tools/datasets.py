@@ -1,6 +1,6 @@
 from typing import Optional, List
-from ..client.portal import BeninPortalClient
-from ..models.dataset import Dataset
+from opendata_bj.client.portal import BeninPortalClient
+from opendata_bj.models.dataset import Dataset
 
 async def search_datasets(client: BeninPortalClient, query: Optional[str] = None, limit: int = 10) -> str:
     """Search for public datasets from Benin."""
