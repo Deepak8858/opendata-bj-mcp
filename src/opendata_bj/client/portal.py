@@ -24,12 +24,18 @@ class BeninPortalClient:
 
     async def get_dataset_details(self, dataset_id: str) -> Optional[Dataset]:
         """Récupère les détails d'un jeu de données spécifique."""
-        url = f"{self.base_url}/api/open/datasets/details/{dataset_id}"
-        response = await self.client.get(url)
+        # Comme l'endpoint details semble absent, on le recherche via l'endpoint de recherche
+        url = f"{self.base_url}/api/open/datasets/all"
+        params = {"format": "json", "q": dataset_id, "limit": 100}
+        response = await self.client.get(url, params=params)
         if response.status_code == 404:
             return None
         response.raise_for_status()
-        return Dataset(**response.json())
+        data = response.json()
+        for ds in data.get("datasets", []):
+            if ds.get("id") == dataset_id or ds.get("dataset_id") == dataset_id:
+                return Dataset(**ds)
+        return None
 
     async def bulk_upload(self, metadata: Dict[str, Any], files: List[str]) -> Dict[str, Any]:
         """Upload de masse de jeux de données."""
