@@ -25,12 +25,10 @@ docker build -t opendata-bj-mcp .
 ```
 
 2. Lancer le conteneur :
-Afin de pouvoir récupérer les fichiers téléchargés (comme l'archive des datasets générée par l'outil `download_datasets`), il est vivement conseillé de lier un volume local vers `/app/downloads`.
 
 ```bash
 docker run -i --rm \
   -e BENIN_OPEN_DATA_API_KEY="votre_cle_api_ici" \
-  -v $(pwd)/downloads:/app/downloads \
   opendata-bj-mcp
 ```
 *(L'option `-i` est utilisée car le serveur MCP communique via `stdio`)*
@@ -69,15 +67,12 @@ Une fois l'application fonctionnelle, vous pouvez l'intégrer à un client compa
         "--rm",
         "-e",
         "BENIN_OPEN_DATA_API_KEY=votre_cle_api_ici",
-        "-v",
-        "/chemin/absolu/local/vers/downloads:/app/downloads",
         "opendata-bj-mcp"
       ]
     }
   }
 }
 ```
-*(Remplacez `/chemin/absolu/local/vers/downloads` par un vrai dossier sur votre ordinateur. Les archives ZIP y seront téléchargées.)*
 
 ## Architecture
 Inspirée du projet `Collegue`, cette architecture privilégie la modularité et la validation stricte des données via Pydantic v2.

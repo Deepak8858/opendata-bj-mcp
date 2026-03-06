@@ -36,12 +36,6 @@ async def list_organizations() -> str:
     return await datasets.list_organizations(client)
 
 @mcp.tool()
-async def download_datasets(limit: int = 50, include_resources: bool = True) -> str:
-    """Download available datasets into a ZIP archive. Default limit is 50."""
-    client = await get_client()
-    return await datasets.download_datasets(client, limit, include_resources)
-
-@mcp.tool()
 async def publish_datasets_bulk(metadata_json: str) -> str:
     """Bulk upload datasets."""
     client = await get_client()
