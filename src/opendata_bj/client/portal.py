@@ -74,5 +74,29 @@ class BeninPortalClient:
                 orgs.append(name)
         return orgs
 
+    async def download_all_datasets(self, output_path: str = "datasets-complet.zip", include_resources: bool = True, limit: int = 1000) -> str:
+        """Télécharge tous les datasets disponibles dans une archive ZIP."""
+        if not self.api_key:
+            raise ValueError("An API key is required to download all datasets.")
+            
+        url = f"{self.base_url}/api/open/datasets/download-all"
+        params = {
+            "api_key": self.api_key,
+            "format": "zip",
+            "include_resources": str(include_resources).lower(),
+            "limit": limit
+        }
+        
+        import os
+        # We use a larger timeout for downloading large files
+        async with httpx.AsyncClient(timeout=None) as download_client:
+            async with download_client.stream("GET", url, params=params) as response:
+                response.raise_for_status()
+                with open(output_path, "wb") as f:
+                    async for chunk in response.aiter_bytes(chunk_size=8192):
+                        f.write(chunk)
+                        
+        return os.path.abspath(output_path)
+
     async def close(self):
         await self.client.aclose()

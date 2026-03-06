@@ -38,3 +38,15 @@ async def list_organizations(client: BeninPortalClient) -> str:
     if not orgs:
         return "No organizations found."
     return "Available Organizations:\n" + "\n".join([f"- {org}" for org in orgs])
+
+async def download_all_datasets(client: BeninPortalClient, limit: int = 1000, include_resources: bool = True) -> str:
+    """Download all available datasets into a ZIP archive."""
+    try:
+        output_path = await client.download_all_datasets(
+            output_path="datasets-complet.zip", 
+            include_resources=include_resources, 
+            limit=limit
+        )
+        return f"Successfully downloaded all datasets to: {output_path}"
+    except Exception as e:
+        return f"Error downloading datasets: {str(e)}"
