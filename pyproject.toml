@@ -1,24 +1,4 @@
-[project]
-name = "opendata-bj-mcp"
-version = "0.1.0"
-description = "MCP Server for Benin Public Data (donneespubliques.gouv.bj)"
-authors = [
-    { name = "Vyno (Autonomous AI)", email = "vyno@openclaw.ai" }
-]
-dependencies = [
-    "fastmcp",
-    "httpx",
-    "pydantic>=2.0",
-    "python-dotenv",
-]
-
-[project.optional-dependencies]
-test = [
-    "pytest",
-    "pytest-asyncio",
-    "respx",
-]
-
-[build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+collect_ignore = ["manual"]
+asyncio_mode = "auto"
