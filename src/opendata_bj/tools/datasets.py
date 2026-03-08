@@ -71,11 +71,29 @@ async def preview_dataset(
 
     resource = ds.resources[resource_index]
 
+    supported_formats = ["CSV", "TXT", "JSON", "XLS", "XLSX"]
+    if resource.format.upper() not in supported_formats:
+        return (
+            f"⚠️ Cannot preview resource '{resource.name}'.\n"
+            f"**Format**: {resource.format} (not supported for preview)\n\n"
+            f"Supported formats: {', '.join(supported_formats)}\n\n"
+            f"You can download the raw file using `download_dataset`:\n"
+            f"- Dataset ID: `{dataset_id}`\n"
+            f"- Resource Index: `{resource_index}`\n"
+            f"- URL: {resource.url}"
+        )
+
     try:
         headers, data_rows = await client.get_resource_preview(resource.url, max_rows=rows)
 
         if not headers:
-            return f"Could not parse preview for resource '{resource.name}'. Format might not be supported."
+            return (
+                f"⚠️ Preview failed for '{resource.name}'\n"
+                f"**Format**: {resource.format}\n\n"
+                f"The file may be empty, malformed, or in an unexpected format.\n\n"
+                f"Try downloading the file instead:\n"
+                f"`download_dataset(dataset_id='{dataset_id}', resource_index={resource_index})`"
+            )
 
         output = [
             f"# Preview: {resource.name}",
