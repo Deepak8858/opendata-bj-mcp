@@ -2,17 +2,21 @@ FROM python:3.13-slim
 
 WORKDIR /app
 
-# Install dependencies
+# Install dependencies first
 COPY pyproject.toml .
-# We use a trick to install dependencies from pyproject.toml without copying the whole code first
-# if we just run pip install it will try to find the package but we haven't copied the whole code yet, 
-# actually since it's a pyproject.toml with build system, we can copy everything and install.
+RUN pip install --no-cache-dir fastmcp httpx "pydantic>=2.0" python-dotenv
+
+# Copy source code
 COPY . .
 
+# Install our package
 RUN pip install --no-cache-dir .
 
 # We can specify BENIN_OPEN_DATA_API_KEY at runtime
 ENV BENIN_OPEN_DATA_API_KEY=""
+
+# Ensure local bin is in PATH
+ENV PATH="/usr/local/bin:${PATH}"
 
 # The server listens via FastMCP. FastMCP uses stdio by default for MCP, 
 # so we run the server using fastmcp run.
