@@ -5,7 +5,7 @@ WORKDIR /app
 # Install dependencies
 COPY pyproject.toml .
 # We use a trick to install dependencies from pyproject.toml without copying the whole code first
-# if we just run pip install it will try to find the package but we haven't copied it yet, 
+# if we just run pip install it will try to find the package but we haven't copied the whole code yet, 
 # actually since it's a pyproject.toml with build system, we can copy everything and install.
 COPY . .
 
