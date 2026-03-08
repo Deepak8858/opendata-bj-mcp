@@ -1,7 +1,7 @@
 import os
 from typing import Optional
 from pathlib import Path
-from fastmcp import FastMCP, resource
+from fastmcp import FastMCP
 from opendata_bj.client.portal import BeninPortalClient
 from opendata_bj.tools import datasets, admin
 
@@ -37,6 +37,35 @@ async def list_organizations() -> str:
     """List institutions that publish data."""
     client = await get_client()
     return await datasets.list_organizations(client)
+
+@mcp.tool()
+async def preview_dataset(dataset_id: str, resource_index: int = 0, rows: int = 10) -> str:
+    """
+    Preview the first rows of a dataset resource.
+    
+    Args:
+        dataset_id: The ID of the dataset to preview
+        resource_index: Index of the resource (0 = first resource, default: 0)
+        rows: Number of rows to show (1-50, default: 10)
+    """
+    client = await get_client()
+    return await datasets.preview_dataset(client, dataset_id, resource_index, rows)
+
+@mcp.tool()
+async def download_dataset(dataset_id: str, resource_index: int = 0, max_size_mb: int = 10) -> dict:
+    """
+    Download a dataset resource as base64-encoded content.
+    
+    Args:
+        dataset_id: The ID of the dataset to download
+        resource_index: Index of the resource (0 = first resource, default: 0)
+        max_size_mb: Maximum file size in MB (1-50, default: 10)
+        
+    Returns:
+        dict with success status, filename, content_base64, size_bytes, mime_type
+    """
+    client = await get_client()
+    return await datasets.download_dataset(client, dataset_id, resource_index, max_size_mb)
 
 @mcp.tool()
 async def publish_datasets_bulk(metadata_json: str) -> str:
