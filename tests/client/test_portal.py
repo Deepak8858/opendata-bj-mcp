@@ -179,3 +179,175 @@ async def test_get_dataset_details_not_found():
         assert details is None
 
     await client.close()
+
+
+# Cache-related tests
+
+@pytest.mark.asyncio
+async def test_cache_hit_avoids_api_call():
+    """Test that cached results avoid unnecessary API calls."""
+    client = BeninPortalClient(enable_cache=True, cache_max_size=100)
+    mock_data = {
+        "datasets": [
+            {"id": "cached_ds", "name": "cached-dataset", "title": "Cached Dataset", "organization": "TestOrg", "resources": []}
+        ]
+    }
+
+    with respx.mock:
+        route = respx.get(
+            "https://donneespubliques.gouv.bj/api/open/datasets/all",
+            params={"format": "json", "limit": 10, "offset": 0}
+        ).mock(return_value=Response(200, json=mock_data))
+
+        # First call - should hit API
+        result1 = await client.get_all_datasets(limit=10, offset=0)
+        assert result1[0].id == "cached_ds"
+        assert route.call_count == 1
+
+        # Second call - should use cache
+        result2 = await client.get_all_datasets(limit=10, offset=0)
+        assert result2[0].id == "cached_ds"
+        # API should not be called again
+        assert route.call_count == 1
+
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_cache_disabled_makes_multiple_calls():
+    """Test that disabled cache results in multiple API calls."""
+    client = BeninPortalClient(enable_cache=False, cache_max_size=100)
+    mock_data = {
+        "datasets": [
+            {"id": "ds", "name": "dataset", "title": "Dataset", "organization": "Org", "resources": []}
+        ]
+    }
+
+    with respx.mock:
+        route = respx.get(
+            "https://donneespubliques.gouv.bj/api/open/datasets/all",
+            params={"format": "json", "limit": 10, "offset": 0}
+        ).mock(return_value=Response(200, json=mock_data))
+
+        # Multiple calls should all hit API when cache is disabled
+        await client.get_all_datasets(limit=10, offset=0)
+        await client.get_all_datasets(limit=10, offset=0)
+        await client.get_all_datasets(limit=10, offset=0)
+        
+        assert route.call_count == 3
+
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_clear_cache_async():
+    """Test that clear_cache_async removes all cached data."""
+    client = BeninPortalClient(enable_cache=True, cache_max_size=100)
+    mock_data = {
+        "datasets": [
+            {"id": "ds", "name": "dataset", "title": "Dataset", "organization": "Org", "resources": []}
+        ]
+    }
+
+    with respx.mock:
+        route = respx.get(
+            "https://donneespubliques.gouv.bj/api/open/datasets/all",
+            params={"format": "json", "limit": 10, "offset": 0}
+        ).mock(return_value=Response(200, json=mock_data))
+
+        # First call - cache miss
+        await client.get_all_datasets(limit=10, offset=0)
+        assert route.call_count == 1
+
+        # Clear cache
+        await client.clear_cache_async()
+
+        # Next call should hit API again
+        await client.get_all_datasets(limit=10, offset=0)
+        assert route.call_count == 2
+
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_get_cache_stats():
+    """Test that cache stats are accurate."""
+    client = BeninPortalClient(enable_cache=True, cache_max_size=100)
+    mock_data = {"datasets": [{"id": "ds1", "name": "ds1", "title": "DS1", "organization": "Org", "resources": []}]}
+
+    with respx.mock:
+        respx.get("https://donneespubliques.gouv.bj/api/open/datasets/all").mock(
+            return_value=Response(200, json=mock_data)
+        )
+
+        # Get initial stats
+        stats = await client.get_cache_stats()
+        assert stats["enabled"] is True
+        assert stats["datasets"]["size"] == 0
+
+        # Make a request
+        await client.get_all_datasets()
+
+        # Check updated stats
+        stats = await client.get_cache_stats()
+        assert stats["datasets"]["size"] == 1
+
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_dataset_details_caching():
+    """Test that get_dataset_details uses cache correctly."""
+    client = BeninPortalClient(enable_cache=True, cache_max_size=100)
+    mock_data = {
+        "datasets": [
+            {"id": "specific_id", "name": "dataset", "title": "Dataset", "organization": "Org", "resources": []}
+        ]
+    }
+
+    with respx.mock:
+        route = respx.get(
+            "https://donneespubliques.gouv.bj/api/open/datasets/all",
+            params={"format": "json", "q": "specific_id", "limit": 100}
+        ).mock(return_value=Response(200, json=mock_data))
+
+        # First call - should hit API
+        result1 = await client.get_dataset_details("specific_id")
+        assert result1.id == "specific_id"
+        assert route.call_count == 1
+
+        # Second call - should use cache
+        result2 = await client.get_dataset_details("specific_id")
+        assert result2.id == "specific_id"
+        assert route.call_count == 1  # No additional API call
+
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_organizations_caching():
+    """Test that get_organizations uses cache correctly."""
+    client = BeninPortalClient(enable_cache=True, cache_max_size=100)
+    mock_data = {
+        "data": [
+            {"name": "INSTAD", "title": "Institut"},
+            {"name": "CDIJ", "title": "Centre"},
+        ]
+    }
+
+    with respx.mock:
+        route = respx.get("https://donneespubliques.gouv.bj/api/v1/organizations").mock(
+            return_value=Response(200, json=mock_data)
+        )
+
+        # First call - should hit API
+        result1 = await client.get_organizations()
+        assert "INSTAD" in result1
+        assert route.call_count == 1
+
+        # Second call - should use cache
+        result2 = await client.get_organizations()
+        assert "INSTAD" in result2
+        assert route.call_count == 1  # No additional API call
+
+    await client.close()

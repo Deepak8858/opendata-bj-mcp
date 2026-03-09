@@ -5,6 +5,7 @@ from typing import List, Optional, Dict, Any, Tuple, AsyncIterator
 from urllib.parse import urlparse
 
 from opendata_bj.models.dataset import Dataset
+from opendata_bj.cache import MultiLevelCache
 from opendata_bj.config import (
     DEFAULT_BASE_URL,
     API_TIMEOUT,
@@ -25,7 +26,7 @@ class BeninPortalClient:
     """Client for the Benin OpenData Portal API.
     
     Provides methods to query datasets, organizations, and resources with
-    built-in support for rate limiting and automatic retry on failures.
+    built-in support for rate limiting, automatic retry, and response caching.
     
     Args:
         base_url: Base URL for the API (default: https://donneespubliques.gouv.bj)
@@ -33,9 +34,11 @@ class BeninPortalClient:
         rate_limit: Maximum requests per minute (default: 100, set to 0 to disable)
         retry_attempts: Number of retry attempts for failed requests (default: 3)
         retry_backoff: Backoff factor for exponential delay (default: 2.0)
+        enable_cache: Whether to enable response caching (default: True)
+        cache_max_size: Maximum number of cached entries per cache type (default: 100)
     
     Example:
-        client = BeninPortalClient(rate_limit=60, retry_attempts=5)
+        client = BeninPortalClient(rate_limit=60, retry_attempts=5, enable_cache=True)
         datasets = await client.get_all_datasets(limit=10)
     """
     
@@ -45,7 +48,9 @@ class BeninPortalClient:
         api_key: Optional[str] = None,
         rate_limit: int = 100,
         retry_attempts: int = 3,
-        retry_backoff: float = 2.0
+        retry_backoff: float = 2.0,
+        enable_cache: bool = True,
+        cache_max_size: int = 100,
     ):
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
@@ -57,6 +62,12 @@ class BeninPortalClient:
         self._retry_config = RetryConfig(
             max_attempts=retry_attempts,
             backoff_factor=retry_backoff
+        )
+        
+        # Configure cache
+        self._cache = MultiLevelCache(
+            enable_cache=enable_cache,
+            max_size=cache_max_size,
         )
         
         self.client = httpx.AsyncClient(
@@ -105,6 +116,14 @@ class BeninPortalClient:
         Returns:
             List of Dataset objects matching the query
         """
+        cache_key = f"all:{query}:{limit}:{offset}"
+        
+        # Try cache first
+        if self._cache.enable_cache:
+            cached = await self._cache.datasets.get(cache_key)
+            if cached is not None:
+                return cached
+        
         url = f"{self.base_url}{ENDPOINT_DATASETS_ALL}"
         params = {"format": "json", "limit": limit, "offset": offset}
         if query:
@@ -114,7 +133,13 @@ class BeninPortalClient:
         response.raise_for_status()
         data = response.json()
 
-        return [Dataset(**ds) for ds in data.get("datasets", [])]
+        result = [Dataset(**ds) for ds in data.get("datasets", [])]
+        
+        # Store in cache
+        if self._cache.enable_cache:
+            await self._cache.datasets.set(cache_key, result)
+        
+        return result
 
     async def iter_all_datasets(
         self, query: Optional[str] = None, batch_size: int = 100
@@ -157,6 +182,14 @@ class BeninPortalClient:
         Returns:
             Dataset object if found, None otherwise
         """
+        cache_key = f"details:{dataset_id}"
+        
+        # Try cache first
+        if self._cache.enable_cache:
+            cached = await self._cache.datasets.get(cache_key)
+            if cached is not None:
+                return cached
+        
         url = f"{self.base_url}{ENDPOINT_DATASETS_ALL}"
         params = {"format": "json", "q": dataset_id, "limit": 100}
 
@@ -168,7 +201,11 @@ class BeninPortalClient:
 
         for ds in data.get("datasets", []):
             if ds.get("id") == dataset_id or ds.get("dataset_id") == dataset_id:
-                return Dataset(**ds)
+                result = Dataset(**ds)
+                # Store in cache
+                if self._cache.enable_cache:
+                    await self._cache.datasets.set(cache_key, result)
+                return result
         return None
 
     async def bulk_upload(
@@ -182,13 +219,36 @@ class BeninPortalClient:
             
         Returns:
             API response as dictionary
+            
+        Note:
+            This operation clears the datasets cache.
         """
         url = f"{self.base_url}{ENDPOINT_BULK_UPLOAD}"
         data = {"api_key": self.api_key} if self.api_key else {}
 
         response = await self._make_request("POST", url, json=metadata, params=data)
         response.raise_for_status()
+        
+        # Invalidate datasets cache after upload
+        if self._cache.enable_cache:
+            await self._cache.datasets.clear()
+        
         return response.json()
+
+    async def clear_cache_async(self) -> None:
+        """Clear all caches.
+        
+        Use this when you need fresh data and want to bypass the cache.
+        """
+        await self._cache.clear_all()
+    
+    async def get_cache_stats(self) -> Dict[str, Any]:
+        """Get cache statistics.
+        
+        Returns:
+            Dictionary with cache statistics including size, TTL, and hit rates
+        """
+        return await self._cache.get_stats()
 
     async def get_organizations(self) -> List[str]:
         """Get list of all organizations publishing data.
@@ -196,6 +256,14 @@ class BeninPortalClient:
         Returns:
             Sorted list of organization names
         """
+        cache_key = "organizations"
+        
+        # Try cache first
+        if self._cache.enable_cache:
+            cached = await self._cache.organizations.get(cache_key)
+            if cached is not None:
+                return cached
+        
         url = f"{self.base_url}{ENDPOINT_ORGANIZATIONS}"
         
         try:
@@ -204,20 +272,32 @@ class BeninPortalClient:
             if response.status_code == 404:
                 datasets = await self.get_all_datasets(limit=100)
                 orgs = {ds.organization for ds in datasets if ds.organization}
-                return sorted(list(orgs))
+                result = sorted(list(orgs))
+                # Store in cache
+                if self._cache.enable_cache:
+                    await self._cache.organizations.set(cache_key, result)
+                return result
 
             response.raise_for_status()
             data = response.json()
-            return [
+            result = [
                 org.get("name") or org.get("title")
                 for org in data.get("data", [])
                 if org.get("name") or org.get("title")
             ]
+            # Store in cache
+            if self._cache.enable_cache:
+                await self._cache.organizations.set(cache_key, result)
+            return result
         except httpx.HTTPStatusError:
             # Fallback to extracting from datasets
             datasets = await self.get_all_datasets(limit=100)
             orgs = {ds.organization for ds in datasets if ds.organization}
-            return sorted(list(orgs))
+            result = sorted(list(orgs))
+            # Store in cache
+            if self._cache.enable_cache:
+                await self._cache.organizations.set(cache_key, result)
+            return result
 
     async def get_resource_preview(
         self, resource_url: str, max_rows: int = 10
