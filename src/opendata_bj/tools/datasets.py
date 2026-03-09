@@ -2,6 +2,7 @@ from typing import Optional
 import base64
 
 from opendata_bj.client.portal import BeninPortalClient
+from opendata_bj.tools.preview_handlers import get_handler, get_supported_formats
 from opendata_bj.config import (
     MAX_PREVIEW_ROWS,
     DEFAULT_PREVIEW_ROWS,
@@ -68,6 +69,17 @@ async def preview_dataset(
     resource_index: int = 0,
     rows: int = DEFAULT_PREVIEW_ROWS,
 ) -> str:
+    """Preview a dataset resource.
+    
+    Args:
+        client: The BeninPortalClient instance
+        dataset_id: ID of the dataset to preview
+        resource_index: Index of the resource within the dataset
+        rows: Number of rows to preview
+        
+    Returns:
+        Formatted preview string or error message
+    """
     rows = min(max(rows, 1), MAX_PREVIEW_ROWS)
 
     ds = await client.get_dataset_details(dataset_id)
@@ -82,8 +94,11 @@ async def preview_dataset(
 
     resource = ds.resources[resource_index]
 
-    supported_formats = ["CSV", "TXT", "JSON", "XLS", "XLSX"]
-    if resource.format.upper() not in supported_formats:
+    # Get the appropriate handler for this format
+    handler = get_handler(resource.format, resource.mimetype)
+    supported_formats = get_supported_formats()
+    
+    if handler is None:
         return (
             f"⚠️ Cannot preview resource '{resource.name}'.\n"
             f"**Format**: {resource.format} (not supported for preview)\n\n"
@@ -95,9 +110,15 @@ async def preview_dataset(
         )
 
     try:
-        headers, data_rows = await client.get_resource_preview(resource.url, max_rows=rows)
+        # Download content for preview (limit to preview bytes)
+        content, _, _ = await client.download_resource(
+            resource.url, max_size_mb=10  # Limit preview to 10MB max
+        )
+        
+        # Use the handler to extract preview data
+        headers, data_rows = await handler.preview(content, max_rows=rows)
 
-        if not headers:
+        if not headers and not data_rows:
             return (
                 f"⚠️ Preview failed for '{resource.name}'\n"
                 f"**Format**: {resource.format}\n\n"
@@ -113,19 +134,30 @@ async def preview_dataset(
             f"\nShowing first {len(data_rows)} row(s):\n",
         ]
 
-        header_line = "| " + " | ".join(headers) + " |"
-        separator = "|" + "|".join([" --- " for _ in headers]) + "|"
-
-        output.extend([header_line, separator])
+        if headers:
+            header_line = "| " + " | ".join(headers) + " |"
+            separator = "|" + "|".join([" --- " for _ in headers]) + "|"
+            output.extend([header_line, separator])
 
         for row in data_rows:
-            padded_row = row + [""] * (len(headers) - len(row))
+            if headers:
+                padded_row = row + [""] * (len(headers) - len(row))
+            else:
+                padded_row = row
             output.append("| " + " | ".join(padded_row) + " |")
 
         return "\n".join(output)
 
     except PermissionError as e:
         return f"❌ Access denied: {str(e)}"
+    except ImportError as e:
+        return (
+            f"⚠️ Preview unavailable for '{resource.name}'\n"
+            f"**Format**: {resource.format}\n\n"
+            f"Missing dependency: {str(e)}\n\n"
+            f"Try downloading the file instead:\n"
+            f"`download_dataset(dataset_id='{dataset_id}', resource_index={resource_index})`"
+        )
     except Exception as e:
         return f"Error previewing resource: {str(e)}"
 
