@@ -1,5 +1,6 @@
 import httpx
 import base64
+import logging
 from typing import List, Optional, Dict, Any, Tuple, AsyncIterator
 from urllib.parse import urlparse
 
@@ -15,12 +16,49 @@ from opendata_bj.config import (
     ENDPOINT_ORGANIZATIONS,
     ENDPOINT_BULK_UPLOAD,
 )
+from opendata_bj.client.rate_limiter import RateLimiter, RetryConfig, execute_with_retry
+
+logger = logging.getLogger(__name__)
 
 
 class BeninPortalClient:
-    def __init__(self, base_url: str = DEFAULT_BASE_URL, api_key: Optional[str] = None):
+    """Client for the Benin OpenData Portal API.
+    
+    Provides methods to query datasets, organizations, and resources with
+    built-in support for rate limiting and automatic retry on failures.
+    
+    Args:
+        base_url: Base URL for the API (default: https://donneespubliques.gouv.bj)
+        api_key: Optional API key for authenticated requests
+        rate_limit: Maximum requests per minute (default: 100, set to 0 to disable)
+        retry_attempts: Number of retry attempts for failed requests (default: 3)
+        retry_backoff: Backoff factor for exponential delay (default: 2.0)
+    
+    Example:
+        client = BeninPortalClient(rate_limit=60, retry_attempts=5)
+        datasets = await client.get_all_datasets(limit=10)
+    """
+    
+    def __init__(
+        self,
+        base_url: str = DEFAULT_BASE_URL,
+        api_key: Optional[str] = None,
+        rate_limit: int = 100,
+        retry_attempts: int = 3,
+        retry_backoff: float = 2.0
+    ):
         self.base_url = base_url.rstrip("/")
         self.api_key = api_key
+        
+        # Configure rate limiter
+        self._rate_limiter = RateLimiter(rate_limit) if rate_limit > 0 else None
+        
+        # Configure retry settings
+        self._retry_config = RetryConfig(
+            max_attempts=retry_attempts,
+            backoff_factor=retry_backoff
+        )
+        
         self.client = httpx.AsyncClient(
             timeout=API_TIMEOUT,
             headers=DEFAULT_HEADERS,
@@ -30,6 +68,28 @@ class BeninPortalClient:
             timeout=RESOURCE_TIMEOUT,
             headers={},
             follow_redirects=True,
+        )
+
+    async def _make_request(self, method: str, url: str, **kwargs) -> httpx.Response:
+        """Make an HTTP request with rate limiting and retry logic.
+        
+        Args:
+            method: HTTP method (GET, POST, etc.)
+            url: Request URL
+            **kwargs: Additional arguments for the request
+            
+        Returns:
+            HTTP response (may have error status)
+        """
+        # Apply rate limiting if configured
+        if self._rate_limiter:
+            await self._rate_limiter.acquire()
+        
+        # Execute request with retry logic
+        return await execute_with_retry(
+            operation=lambda: self.client.request(method, url, **kwargs),
+            config=self._retry_config,
+            operation_name=f"{method} {url}"
         )
 
     async def get_all_datasets(
@@ -50,7 +110,7 @@ class BeninPortalClient:
         if query:
             params["q"] = query
 
-        response = await self.client.get(url, params=params)
+        response = await self._make_request("GET", url, params=params)
         response.raise_for_status()
         data = response.json()
 
@@ -89,10 +149,18 @@ class BeninPortalClient:
                 break
 
     async def get_dataset_details(self, dataset_id: str) -> Optional[Dataset]:
+        """Get detailed information about a specific dataset.
+        
+        Args:
+            dataset_id: Unique identifier of the dataset
+            
+        Returns:
+            Dataset object if found, None otherwise
+        """
         url = f"{self.base_url}{ENDPOINT_DATASETS_ALL}"
         params = {"format": "json", "q": dataset_id, "limit": 100}
 
-        response = await self.client.get(url, params=params)
+        response = await self._make_request("GET", url, params=params)
         if response.status_code == 404:
             return None
         response.raise_for_status()
@@ -106,29 +174,50 @@ class BeninPortalClient:
     async def bulk_upload(
         self, metadata: Dict[str, Any], files: List[str]
     ) -> Dict[str, Any]:
+        """Upload multiple datasets in bulk.
+        
+        Args:
+            metadata: Metadata for the datasets
+            files: List of file paths to upload
+            
+        Returns:
+            API response as dictionary
+        """
         url = f"{self.base_url}{ENDPOINT_BULK_UPLOAD}"
         data = {"api_key": self.api_key} if self.api_key else {}
 
-        response = await self.client.post(url, json=metadata, params=data)
+        response = await self._make_request("POST", url, json=metadata, params=data)
         response.raise_for_status()
         return response.json()
 
     async def get_organizations(self) -> List[str]:
+        """Get list of all organizations publishing data.
+        
+        Returns:
+            Sorted list of organization names
+        """
         url = f"{self.base_url}{ENDPOINT_ORGANIZATIONS}"
-        response = await self.client.get(url)
+        
+        try:
+            response = await self._make_request("GET", url)
+            
+            if response.status_code == 404:
+                datasets = await self.get_all_datasets(limit=100)
+                orgs = {ds.organization for ds in datasets if ds.organization}
+                return sorted(list(orgs))
 
-        if response.status_code == 404:
+            response.raise_for_status()
+            data = response.json()
+            return [
+                org.get("name") or org.get("title")
+                for org in data.get("data", [])
+                if org.get("name") or org.get("title")
+            ]
+        except httpx.HTTPStatusError:
+            # Fallback to extracting from datasets
             datasets = await self.get_all_datasets(limit=100)
             orgs = {ds.organization for ds in datasets if ds.organization}
             return sorted(list(orgs))
-
-        response.raise_for_status()
-        data = response.json()
-        return [
-            org.get("name") or org.get("title")
-            for org in data.get("data", [])
-            if org.get("name") or org.get("title")
-        ]
 
     async def get_resource_preview(
         self, resource_url: str, max_rows: int = 10
