@@ -1,6 +1,6 @@
 import httpx
 import base64
-from typing import List, Optional, Dict, Any, Tuple
+from typing import List, Optional, Dict, Any, Tuple, AsyncIterator
 from urllib.parse import urlparse
 
 from opendata_bj.models.dataset import Dataset
@@ -33,10 +33,20 @@ class BeninPortalClient:
         )
 
     async def get_all_datasets(
-        self, query: Optional[str] = None, limit: int = 10
+        self, query: Optional[str] = None, limit: int = 10, offset: int = 0
     ) -> List[Dataset]:
+        """Fetch datasets with optional pagination.
+
+        Args:
+            query: Optional search query string
+            limit: Maximum number of results to return (default: 10)
+            offset: Number of results to skip for pagination (default: 0)
+
+        Returns:
+            List of Dataset objects matching the query
+        """
         url = f"{self.base_url}{ENDPOINT_DATASETS_ALL}"
-        params = {"format": "json", "limit": limit}
+        params = {"format": "json", "limit": limit, "offset": offset}
         if query:
             params["q"] = query
 
@@ -45,6 +55,38 @@ class BeninPortalClient:
         data = response.json()
 
         return [Dataset(**ds) for ds in data.get("datasets", [])]
+
+    async def iter_all_datasets(
+        self, query: Optional[str] = None, batch_size: int = 100
+    ) -> AsyncIterator[Dataset]:
+        """Iterate through all datasets with automatic pagination.
+
+        This async generator yields datasets one by one, handling pagination
+        automatically to fetch all results from the API.
+
+        Args:
+            query: Optional search query string
+            batch_size: Number of datasets to fetch per API call (default: 100)
+
+        Yields:
+            Dataset objects one at a time
+
+        Example:
+            async for dataset in client.iter_all_datasets(query="health"):
+                print(dataset.title)
+        """
+        offset = 0
+        while True:
+            batch = await self.get_all_datasets(
+                query=query, limit=batch_size, offset=offset
+            )
+            if not batch:
+                break
+            for dataset in batch:
+                yield dataset
+            offset += batch_size
+            if len(batch) < batch_size:
+                break
 
     async def get_dataset_details(self, dataset_id: str) -> Optional[Dataset]:
         url = f"{self.base_url}{ENDPOINT_DATASETS_ALL}"

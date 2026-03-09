@@ -11,9 +11,20 @@ from opendata_bj.config import (
 
 
 async def search_datasets(
-    client: BeninPortalClient, query: Optional[str] = None, limit: int = 10
+    client: BeninPortalClient, query: Optional[str] = None, limit: int = 10, offset: int = 0
 ) -> str:
-    datasets = await client.get_all_datasets(query=query, limit=limit)
+    """Search for public datasets from Benin.
+    
+    Args:
+        client: The BeninPortalClient instance
+        query: Optional search query string
+        limit: Maximum number of results to return (default: 10)
+        offset: Number of results to skip for pagination (default: 0)
+    
+    Returns:
+        Formatted string with dataset information
+    """
+    datasets = await client.get_all_datasets(query=query, limit=limit, offset=offset)
 
     if not datasets:
         return "No datasets found for this search."

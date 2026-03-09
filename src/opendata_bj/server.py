@@ -20,10 +20,16 @@ async def get_client() -> BeninPortalClient:
 
 
 @mcp.tool()
-async def search_datasets(query: Optional[str] = None, limit: int = 10) -> str:
-    """Search for public datasets from Benin."""
+async def search_datasets(query: Optional[str] = None, limit: int = 10, offset: int = 0) -> str:
+    """Search for public datasets from Benin.
+    
+    Args:
+        query: Search keyword to filter datasets
+        limit: Maximum number of results (1-100, default: 10)
+        offset: Skip N results for pagination (default: 0)
+    """
     client = await get_client()
-    return await datasets.search_datasets(client, query, limit)
+    return await datasets.search_datasets(client, query, limit, offset)
 
 
 @mcp.tool()
