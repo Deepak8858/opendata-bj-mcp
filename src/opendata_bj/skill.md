@@ -9,9 +9,11 @@ Searches for public datasets on the Benin open data portal. It's the primary ent
 
 - **Parameters:**
   - `query` (string, optional): The search keyword or phrase.
-  - `limit` (integer, optional, default: 10): The maximum number of datasets to return.
+  - `limit` (integer, optional, default: 10): The maximum number of datasets to return (1-100).
+  - `offset` (integer, optional, default: 0): The number of results to skip, used for pagination through large result sets.
 - **Returns:** A formatted string listing the found datasets, including their ID, title, and organization.
 - **When to use:** When the user asks to find data about a specific topic (e.g., "trouve des données sur la santé").
+- **Pagination:** For large result sets, use `offset` to navigate through pages of results (e.g., `offset=0` for page 1, `offset=10` for page 2 with `limit=10`).
 
 ### `get_dataset`
 Retrieves detailed information and resources for a specific dataset using its ID.
