@@ -39,14 +39,36 @@ Previews the content of a dataset resource directly in the chat. Supports multip
   - **HTML/HTM**: Extracts tables, definition lists, or structured content from web pages (requires `beautifulsoup4`)
 
 ### `download_dataset`
-Downloads a dataset resource and returns it as base64-encoded content.
+Downloads a dataset resource with adaptive method selection. Intelligently chooses between returning a direct download URL or the file content as base64, based on file size and format.
 
 - **Parameters:**
   - `dataset_id` (string, required): The ID of the dataset to download from.
   - `resource_index` (integer, optional, default: 0): The index of the resource to download.
   - `max_size_mb` (integer, optional, default: 10): Maximum file size in MB (1-50).
-- **Returns:** A dictionary with `success` status, `filename`, `content_base64`, `size_bytes`, `mime_type`, and metadata.
+  - `method` (string, optional, default: "auto"): Download method selection:
+    - `"auto"`: Returns base64 if < 1MB, URL if >= 1MB or HTML format
+    - `"url"`: Always returns the direct download URL
+    - `"content"`: Always downloads and returns base64 content
+- **Returns:**
+  - For `method="url"`: Dictionary with `success`, `method="url"`, `download_url`, `filename`, `format`, `note`
+  - For `method="content"`: Dictionary with `success`, `method="content"`, `content_base64`, `filename`, `size_bytes`, `mime_type`
+  - For HTML resources: Error with `suggestion` to use `preview_dataset`
 - **When to use:** When the user needs the actual file data for further processing or analysis.
+- **Size Threshold:** Files >= 1MB automatically return a URL instead of base64 to avoid performance issues.
+- **HTML Handling:** HTML resources (like OpenDataForAfrica embeds) cannot be downloaded directly. Use `preview_dataset` instead.
+
+**Examples:**
+
+```python
+# Auto mode - smart selection based on file size
+result = await download_dataset(dataset_id="abc123", method="auto")
+
+# Always get URL (recommended for large files)
+result = await download_dataset(dataset_id="abc123", method="url")
+
+# Always get content (for small files you want to process)
+result = await download_dataset(dataset_id="abc123", method="content")
+```
 
 ### `list_organizations`
 Lists all the institutions and organizations that publish data on the portal.

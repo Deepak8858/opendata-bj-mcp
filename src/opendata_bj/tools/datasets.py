@@ -8,7 +8,33 @@ from opendata_bj.config import (
     DEFAULT_PREVIEW_ROWS,
     MAX_DOWNLOAD_SIZE_MB,
     DEFAULT_DOWNLOAD_SIZE_MB,
+    DEFAULT_BASE_URL,
 )
+
+# Size threshold for auto mode (1MB)
+AUTO_MODE_SIZE_THRESHOLD = 1 * 1024 * 1024
+
+
+def get_full_resource_url(resource) -> str:
+    """Convert resource URL to full URL.
+    
+    Handles relative URLs by adding the domain,
+    and returns external URLs as-is.
+    
+    Args:
+        resource: Resource object with url attribute
+        
+    Returns:
+        Complete URL string
+    """
+    url = resource.url
+    
+    # Relative URL → add domain
+    if url.startswith('/'):
+        return f"{DEFAULT_BASE_URL}{url}"
+    
+    # External URL → return as-is
+    return url
 
 
 async def search_datasets(
@@ -111,8 +137,9 @@ async def preview_dataset(
 
     try:
         # Download content for preview (limit to preview bytes)
+        full_url = get_full_resource_url(resource)
         content, _, _ = await client.download_resource(
-            resource.url, max_size_mb=10  # Limit preview to 10MB max
+            full_url, max_size_mb=10  # Limit preview to 10MB max
         )
         
         # Use the handler to extract preview data
@@ -167,7 +194,29 @@ async def download_dataset(
     dataset_id: str,
     resource_index: int = 0,
     max_size_mb: int = DEFAULT_DOWNLOAD_SIZE_MB,
+    method: str = "auto",
 ) -> dict:
+    """Download a dataset resource with adaptive method selection.
+    
+    This function intelligently chooses between returning a direct download URL
+    or the file content as base64, based on file size and format.
+    
+    Args:
+        client: The BeninPortalClient instance
+        dataset_id: ID of the dataset to download from
+        resource_index: Index of the resource within the dataset (default: 0)
+        max_size_mb: Maximum file size in MB (1-50, default: 10)
+        method: Download method - "auto" (default), "url", or "content"
+            - "auto": Returns base64 if < 1MB, URL if >= 1MB or HTML format
+            - "url": Always returns the direct download URL
+            - "content": Always downloads and returns base64 content
+            
+    Returns:
+        Dictionary with success status and either:
+        - method="url": download_url, filename, format
+        - method="content": content_base64, filename, size_bytes, mime_type
+        - error: error message and suggestions
+    """
     max_size_mb = min(max(max_size_mb, 1), MAX_DOWNLOAD_SIZE_MB)
 
     ds = await client.get_dataset_details(dataset_id)
@@ -187,31 +236,70 @@ async def download_dataset(
         }
 
     resource = ds.resources[resource_index]
-
-    try:
-        content, filename, mime_type = await client.download_resource(
-            resource.url, max_size_mb=max_size_mb
-        )
-
-        content_base64 = base64.b64encode(content).decode("utf-8")
-
+    full_url = get_full_resource_url(resource)
+    
+    # Case 3: HTML format - cannot download directly
+    if resource.format.upper() == "HTML":
+        return {
+            "success": False,
+            "error": "Cannot download HTML resource directly",
+            "format": "HTML",
+            "resource_url": full_url,
+            "suggestion": "This is an embeddable web page, not a downloadable file.",
+            "alternative": "Use preview_dataset to extract data from the HTML page",
+        }
+    
+    # Case 1: URL mode explicitly requested
+    if method == "url":
         return {
             "success": True,
-            "filename": filename,
+            "method": "url",
+            "download_url": full_url,
+            "filename": resource.name or "download",
+            "format": resource.format,
+            "size_bytes": None,
+            "note": f"📥 Download the file directly from: {full_url}",
+        }
+    
+    # Case 2: Download content (auto or content mode)
+    try:
+        content, filename, mime_type = await client.download_resource(
+            full_url, max_size_mb=max_size_mb
+        )
+        size_bytes = len(content)
+        
+        # Check if we should return URL instead (auto mode + large file)
+        if method == "auto" and size_bytes >= AUTO_MODE_SIZE_THRESHOLD:
+            return {
+                "success": True,
+                "method": "url",
+                "download_url": full_url,
+                "filename": filename,
+                "format": resource.format,
+                "size_bytes": size_bytes,
+                "note": f"📥 File is large ({size_bytes / 1024 / 1024:.1f}MB). Download from URL: {full_url}",
+            }
+        
+        # Return content as base64
+        content_base64 = base64.b64encode(content).decode("utf-8")
+        
+        return {
+            "success": True,
+            "method": "content",
             "content_base64": content_base64,
-            "size_bytes": len(content),
+            "filename": filename,
+            "size_bytes": size_bytes,
             "mime_type": mime_type,
-            "dataset_title": ds.title,
-            "resource_name": resource.name,
+            "format": resource.format,
         }
 
     except ValueError as e:
-        return {"success": False, "error": str(e)}
+        return {"success": False, "error": str(e), "resource_url": full_url}
     except PermissionError as e:
         return {
             "success": False,
             "error": f"Access denied (403): {str(e)}",
-            "resource_url": resource.url,
+            "resource_url": full_url,
         }
     except Exception as e:
-        return {"success": False, "error": f"Download failed: {str(e)}"}
+        return {"success": False, "error": f"Download failed: {str(e)}", "resource_url": full_url}
