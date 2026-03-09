@@ -67,20 +67,26 @@ async def download_dataset(
     dataset_id: str,
     resource_index: int = 0,
     max_size_mb: int = DEFAULT_DOWNLOAD_SIZE_MB,
+    method: str = "auto",
 ) -> dict:
     """
-    Download a dataset resource as base64-encoded content.
+    Download a dataset resource with adaptive method selection.
 
     Args:
         dataset_id: The ID of the dataset to download
         resource_index: Index of the resource (0 = first resource, default: 0)
         max_size_mb: Maximum file size in MB (1-50, default: 10)
+        method: Download method - "auto" (default), "url", or "content"
+            - "auto": Returns base64 if < 1MB, URL if >= 1MB or HTML format
+            - "url": Always returns the direct download URL
+            - "content": Always downloads and returns base64 content
 
     Returns:
-        dict with success status, filename, content_base64, size_bytes, mime_type
+        dict with success status. For method="url": download_url, filename, format.
+        For method="content": content_base64, filename, size_bytes, mime_type.
     """
     client = await get_client()
-    return await datasets.download_dataset(client, dataset_id, resource_index, max_size_mb)
+    return await datasets.download_dataset(client, dataset_id, resource_index, max_size_mb, method)
 
 
 @mcp.tool()
