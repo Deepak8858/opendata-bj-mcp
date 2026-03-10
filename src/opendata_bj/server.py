@@ -1,26 +1,42 @@
 import os
 from typing import Optional
 from pathlib import Path
-from fastmcp import FastMCP
+from fastmcp import FastMCP, Context
+from fastmcp.dependencies import CurrentContext
+from fastmcp.server.lifespan import lifespan
 from opendata_bj.client.portal import BeninPortalClient
 from opendata_bj.tools import datasets, admin
 from opendata_bj.config import DEFAULT_PREVIEW_ROWS, DEFAULT_DOWNLOAD_SIZE_MB
 
-mcp = FastMCP("opendata-bj")
 
-_client: Optional[BeninPortalClient] = None
+@lifespan
+async def app_lifespan(server):
+    """
+    Manage the HTTP client lifecycle.
+    Creation at startup, clean shutdown.
+    """
+    # STARTUP: Create the client
+    api_key = os.getenv("BENIN_OPEN_DATA_API_KEY")
+    client = BeninPortalClient(api_key=api_key)
+    
+    # Store the client in the lifespan context
+    yield {"client": client}
+    
+    # SHUTDOWN: Properly close connections
+    await client.close()
 
 
-async def get_client() -> BeninPortalClient:
-    global _client
-    if _client is None:
-        api_key = os.getenv("BENIN_OPEN_DATA_API_KEY")
-        _client = BeninPortalClient(api_key=api_key)
-    return _client
+# Create the MCP server with the lifespan
+mcp = FastMCP("opendata-bj", lifespan=app_lifespan)
 
 
 @mcp.tool()
-async def search_datasets(query: Optional[str] = None, limit: int = 10, offset: int = 0) -> str:
+async def search_datasets(
+    query: Optional[str] = None, 
+    limit: int = 10, 
+    offset: int = 0,
+    ctx: Context = CurrentContext()
+) -> str:
     """Search for public datasets from Benin.
     
     Args:
@@ -28,27 +44,30 @@ async def search_datasets(query: Optional[str] = None, limit: int = 10, offset: 
         limit: Maximum number of results (1-100, default: 10)
         offset: Skip N results for pagination (default: 0)
     """
-    client = await get_client()
+    client = ctx.lifespan_context["client"]
     return await datasets.search_datasets(client, query, limit, offset)
 
 
 @mcp.tool()
-async def get_dataset(dataset_id: str) -> str:
+async def get_dataset(dataset_id: str, ctx: Context = CurrentContext()) -> str:
     """Retrieve details for a specific dataset."""
-    client = await get_client()
+    client = ctx.lifespan_context["client"]
     return await datasets.get_dataset(client, dataset_id)
 
 
 @mcp.tool()
-async def list_organizations() -> str:
+async def list_organizations(ctx: Context = CurrentContext()) -> str:
     """List institutions that publish data."""
-    client = await get_client()
+    client = ctx.lifespan_context["client"]
     return await datasets.list_organizations(client)
 
 
 @mcp.tool()
 async def preview_dataset(
-    dataset_id: str, resource_index: int = 0, rows: int = DEFAULT_PREVIEW_ROWS
+    dataset_id: str, 
+    resource_index: int = 0, 
+    rows: int = DEFAULT_PREVIEW_ROWS,
+    ctx: Context = CurrentContext()
 ) -> str:
     """
     Preview the first rows of a dataset resource.
@@ -58,7 +77,7 @@ async def preview_dataset(
         resource_index: Index of the resource (0 = first resource, default: 0)
         rows: Number of rows to show (1-50, default: 10)
     """
-    client = await get_client()
+    client = ctx.lifespan_context["client"]
     return await datasets.preview_dataset(client, dataset_id, resource_index, rows)
 
 
@@ -68,6 +87,7 @@ async def download_dataset(
     resource_index: int = 0,
     max_size_mb: int = DEFAULT_DOWNLOAD_SIZE_MB,
     method: str = "auto",
+    ctx: Context = CurrentContext()
 ) -> dict:
     """
     Download a dataset resource with adaptive method selection.
@@ -85,14 +105,14 @@ async def download_dataset(
         dict with success status. For method="url": download_url, filename, format.
         For method="content": content_base64, filename, size_bytes, mime_type.
     """
-    client = await get_client()
+    client = ctx.lifespan_context["client"]
     return await datasets.download_dataset(client, dataset_id, resource_index, max_size_mb, method)
 
 
 @mcp.tool()
-async def publish_datasets_bulk(metadata_json: str) -> str:
+async def publish_datasets_bulk(metadata_json: str, ctx: Context = CurrentContext()) -> str:
     """(Admin) Bulk upload datasets."""
-    client = await get_client()
+    client = ctx.lifespan_context["client"]
     return await admin.publish_datasets_bulk(client, metadata_json)
 
 
